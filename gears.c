@@ -117,8 +117,8 @@ void display_opts(WINDOW* win, struct Data* data, char** ls, int size, int start
 int menu(WINDOW* win, struct Callback cb, struct Data* data, struct Binding bind, int ptrs[2], void (*dcb)(WINDOW*,struct Data*,char**,int,int,int,int*,int)) {
 	int y; int x; getmaxyx(win, y, x);
 	char** ls = data->ls;
-	int p = ptrs[0];
-	int sp = ptrs[1];
+	/*int p = ptrs[0];
+	int sp = ptrs[1];*/
 	data->ptrs=ptrs;
 	int top = y;
 	int size = cb.nmemb;
@@ -129,50 +129,47 @@ int menu(WINDOW* win, struct Callback cb, struct Data* data, struct Binding bind
 	for (;;) {
 		int ch = wgetch(win);
 		if (ch == KEY_UP) {
-			if (!sp) continue;
-			if (!p) {
+			if (!ptrs[1]) continue;
+			if (!ptrs[0]) {
 				wscrl(win, -1);
-				top--;sp--;
+				top--;ptrs[1]--;
 				wmove(win,0,0);wclrtobot(win);
 				dcb(win, data, ls, cb.nmemb, top-y, top, ptrs, 0);
 
-				ptrs[0]=p+1;ptrs[1]=sp+1;
+				ptrs[0]++;ptrs[1]++;
 				dcb(win, data, ls, cb.nmemb,top-y,top,ptrs,1);
 
 			} else {
-				ptrs[0]=p;ptrs[1]=sp;
 				dcb(win, data, ls, cb.nmemb,top-y,top,ptrs,1);
-				sp--;p--;
+				ptrs[0]--;ptrs[1]--;
 			}
 		}
 		else if (ch == KEY_DOWN) {
-			if (sp == size-1 || !size) continue;
-			if (sp == top-1) {
+			if (ptrs[1] == size-1 || !size) continue;
+			if (ptrs[1] == top-1) {
 				wscrl(win, 1);
-				top++;sp++;
+				top++;ptrs[1]++;
 				wmove(win,0,0);wclrtobot(win);
 				dcb(win, data, ls, cb.nmemb, top-y, top, ptrs,  0);
 				
-				ptrs[0]=p-1;ptrs[1]=sp-1;
+				ptrs[0]++;ptrs[1]--;
 				dcb(win, data, ls, cb.nmemb,top-y,top,ptrs,2);
 			} else {
-				ptrs[0]=p;ptrs[1]=sp;
 				dcb(win, data, ls, cb.nmemb,top-y,top,ptrs,2);
-				sp++;p++;
+				ptrs[0]++;ptrs[1]++;
 			}
 		}
 		else if (ch == 27) {return 0;}
 		else if (ch == 10) {
 			if(!size)continue;
-			data->ptrs[0] = p; data->ptrs[1] = sp;
-			if (cb.func[sp] == NULL) return 1;
-			int res = cb.func[sp](win, data, cb.args[sp]);
+			if (cb.func[data->ptrs[1]] == NULL) return 1;
+			int res = cb.func[data->ptrs[1]](win, data, cb.args[data->ptrs[1]]);
 			return res;
 		} else {
 			int index = search_binding(ch, bind);
 			if (index != -1) {
-				data->ptrs[0] = p; data->ptrs[1] = sp;
-				return bind.func[index](win, data, cb.args[sp]);
+				void* param = size ? cb.args[data->ptrs[1]] : NULL;
+				return bind.func[index](win, data, param);
 			}
 		}
 	}
@@ -365,6 +362,9 @@ int del_task(WINDOW* win, struct Data* data, void* _task) {
 	cb->args = realloc(cb->args, sizeof(void*)*(list->size-1));
 	cb->nmemb--;
 	list->size--;
+	if (data->ptrs[1] && data->ptrs[1] == list->size) {
+		data->ptrs[0]--;data->ptrs[1]--;
+	}
 	write_data(list_of_lists, *size);
 	return 1;
 }

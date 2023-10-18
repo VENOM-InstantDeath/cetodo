@@ -55,8 +55,13 @@ void list_pop(struct List* head) {
 
 int list_popat(struct List* head, int index) {
 	if (head->head == NULL) return 0;
+	if (!index) {list_rpop(head);return 1;}
 	struct Task* curr = head->head;
-	while (index-1) {
+	/*if (!curr->next && !index) {
+		list_pop(head);
+		return 1;
+	}*/
+	while (index && index-1) {
 		if (curr->next == NULL) return 0;
 		curr = curr->next;
 		index--;
