@@ -120,11 +120,11 @@ int menu(WINDOW* win, struct Callback cb, struct Data* data, struct Binding bind
 	/*int p = ptrs[0];
 	int sp = ptrs[1];*/
 	data->ptrs=ptrs;
-	int top = y;
+	data->mtop = y;
 	int size = cb.nmemb;
 	if (size) {
 		dcb(win, data, ls, cb.nmemb, 0, y, ptrs,  0);
-		dcb(win, data, ls, cb.nmemb, 0, top, ptrs, 3);
+		dcb(win, data, ls, cb.nmemb, 0, data->mtop, ptrs, 3);
 	} else mvwaddstr(win, 0, 4, "No hay tareas por aquí.");
 	for (;;) {
 		int ch = wgetch(win);
@@ -132,30 +132,28 @@ int menu(WINDOW* win, struct Callback cb, struct Data* data, struct Binding bind
 			if (!ptrs[1]) continue;
 			if (!ptrs[0]) {
 				wscrl(win, -1);
-				top--;ptrs[1]--;
+				data->mtop--; ptrs[0]++;
 				wmove(win,0,0);wclrtobot(win);
-				dcb(win, data, ls, cb.nmemb, top-y, top, ptrs, 0);
-
-				ptrs[0]++;ptrs[1]++;
-				dcb(win, data, ls, cb.nmemb,top-y,top,ptrs,1);
+				dcb(win, data, ls, cb.nmemb, data->mtop-y, data->mtop, ptrs, 0);
+				dcb(win, data, ls, cb.nmemb,data->mtop-y,data->mtop,ptrs,1);
+				ptrs[0]--;ptrs[1]--;
 
 			} else {
-				dcb(win, data, ls, cb.nmemb,top-y,top,ptrs,1);
+				dcb(win, data, ls, cb.nmemb,data->mtop-y,data->mtop,ptrs,1);
 				ptrs[0]--;ptrs[1]--;
 			}
 		}
 		else if (ch == KEY_DOWN) {
 			if (ptrs[1] == size-1 || !size) continue;
-			if (ptrs[1] == top-1) {
+			if (ptrs[1] == data->mtop-1) {
 				wscrl(win, 1);
-				top++;ptrs[1]++;
+				data->mtop++; ptrs[0]--;
 				wmove(win,0,0);wclrtobot(win);
-				dcb(win, data, ls, cb.nmemb, top-y, top, ptrs,  0);
-				
-				ptrs[0]++;ptrs[1]--;
-				dcb(win, data, ls, cb.nmemb,top-y,top,ptrs,2);
+				dcb(win, data, ls, cb.nmemb, data->mtop-y, data->mtop, ptrs,  0);	
+				dcb(win, data, ls, cb.nmemb,data->mtop-y,data->mtop,ptrs,2);
+				ptrs[0]++;ptrs[1]++;
 			} else {
-				dcb(win, data, ls, cb.nmemb,top-y,top,ptrs,2);
+				dcb(win, data, ls, cb.nmemb,data->mtop-y,data->mtop,ptrs,2);
 				ptrs[0]++;ptrs[1]++;
 			}
 		}
@@ -288,8 +286,8 @@ int open_list(WINDOW* win, struct Data* data, void* _list) {
 	cb.nmemb=list->size;
 	_data.ls = ls;
 	int keys[7] = {'a', 's', 'q', 'D', 'r', 'o', 'l'};
-	int (*func[7])(WINDOW*, struct Data*,void*) = {add_task, goback, quit, del_task, rename_task};
-	struct Binding bind = {keys, func, 5};
+	int (*func[7])(WINDOW*, struct Data*,void*) = {add_task, goback, quit, del_task, rename_task, move_up, move_down};
+	struct Binding bind = {keys, func, 7};
 	int ptrs[2] = {0,0};
 	for (;;) {
 		if (menu(win, cb, &_data, bind, ptrs, display_opts)) {
@@ -389,5 +387,57 @@ int rename_task(WINDOW* win, struct Data* data, void* _task) {
 		data->ls[data->ptrs[1]] = task->id;
 		write_data(list_of_lists, *size);
 	}
+	return 1;
+}
+
+int move_up(WINDOW* win, struct Data* data, void* _task) {
+	if (!_task) return 1;
+	struct Task* task = (struct Task*)_task;
+	struct List* list = (struct List*)((void**)data->data)[1];
+	struct List* list_of_lists = (struct List*)((void**)data->data)[2];
+	int* size = (int*)((void**)data->data)[3];
+	struct Callback* cb = (struct Callback*)((void**)data->data)[4];
+
+	if (!data->ptrs[1]) return 1;
+	char* temp = data->ls[data->ptrs[1]];
+	data->ls[data->ptrs[1]] = data->ls[data->ptrs[1]-1];
+	data->ls[data->ptrs[1]-1] = temp;
+	int (*ftemp)(WINDOW*, struct Data*, void*) = cb->func[data->ptrs[1]];
+	cb->func[data->ptrs[1]] = cb->func[data->ptrs[1]-1];
+	cb->func[data->ptrs[1]-1] = ftemp;
+	void* atemp = cb->args[data->ptrs[1]];
+	cb->args[data->ptrs[1]] = cb->args[data->ptrs[1]-1];
+	cb->args[data->ptrs[1]-1] = atemp;
+
+	if (data->ptrs[0]) data->ptrs[0]--;
+	data->ptrs[1]--;
+
+	write_data(list_of_lists, *size);
+	return 1;
+}
+
+int move_down(WINDOW* win, struct Data* data, void* _task) {
+	if (!_task) return 1;
+	struct Task* task = (struct Task*)_task;
+	struct List* list = (struct List*)((void**)data->data)[1];
+	struct List* list_of_lists = (struct List*)((void**)data->data)[2];
+	int* size = (int*)((void**)data->data)[3];
+	struct Callback* cb = (struct Callback*)((void**)data->data)[4];
+
+	if (data->ptrs[1] == cb->nmemb-1) return 1;
+	char* temp = data->ls[data->ptrs[1]];
+	data->ls[data->ptrs[1]] = data->ls[data->ptrs[1]+1];
+	data->ls[data->ptrs[1]+1] = temp;
+	int (*ftemp)(WINDOW*, struct Data*, void*) = cb->func[data->ptrs[1]];
+	cb->func[data->ptrs[1]] = cb->func[data->ptrs[1]+1];
+	cb->func[data->ptrs[1]+1] = ftemp;
+	void* atemp = cb->args[data->ptrs[1]];
+	cb->args[data->ptrs[1]] = cb->args[data->ptrs[1]+1];
+	cb->args[data->ptrs[1]+1] = atemp;
+
+	if (data->ptrs[0] != data->mtop) data->ptrs[0]++;
+	data->ptrs[1]++;
+
+	write_data(list_of_lists, *size);
 	return 1;
 }

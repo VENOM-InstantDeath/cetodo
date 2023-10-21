@@ -7,6 +7,7 @@ struct Data {
 	char** ls;
 	int* ptrs;
 	WINDOW** wins;
+	int mtop;
 	int wins_size;
 	int islist;
 };
@@ -35,4 +36,6 @@ int goback(WINDOW* win, struct Data* data, void* _task);
 int quit(WINDOW* win, struct Data* data, void* _task);
 int del_task(WINDOW* win, struct Data* data, void* _task);
 int rename_task(WINDOW* win, struct Data* data, void* _task);
+int move_up(WINDOW* win, struct Data* data, void* _task);
+int move_down(WINDOW* win, struct Data* data, void* _task);
 #endif
