@@ -49,11 +49,11 @@ int main() {
 	struct Nopt nopt; nopt.underline=0; nopt.str_size=30;
 	void* _data[3] = {&nopt, list, &list_size};
 	struct Data data; data.wins=wins; data.wins_size=3; data.data=_data; data.ls=ls;
-	data.islist = 1;
+	data.islist = 1; data.menu.dcb = display_opts;
 	struct Binding bind = {NULL, NULL, 0};
 	int ptrs[2] = {0,0};
 	for (;;) {
-		if (menu(main, cb, &data, bind, ptrs, display_opts)) {
+		if (menu(main, cb, &data, bind, ptrs)) {
 			wmove(main, 0, 0); wclrtobot(main);
 		} else break;
 	}

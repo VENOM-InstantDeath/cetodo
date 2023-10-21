@@ -2,14 +2,19 @@
 #define GEARS_H
 #include <ncurses.h>
 #include "linked/linked.h"
+struct Data;
+struct MenuData {
+	void (*dcb)(WINDOW*,struct Data*,char**,int,int,int,int*,int);
+	int* ptrs;
+	int mtop;
+};
 struct Data {
 	void* data;
 	char** ls;
-	int* ptrs;
 	WINDOW** wins;
-	int mtop;
 	int wins_size;
 	int islist;
+	struct MenuData menu;
 };
 struct Callback {
 	int (**func)(WINDOW* win, struct Data*, void*);
@@ -28,7 +33,7 @@ struct Nopt {
 void create_dir_if_not_exist(const char* path);
 void dialog(WINDOW** wins, const char* s);
 void display_opts(WINDOW* win, struct Data* data, char** ls, int size, int start, int top, int* ptrs, int mode);
-int menu(WINDOW* win, struct Callback cb, struct Data* data, struct Binding bind, int ptrs[2], void (*dcb)(WINDOW*,struct Data*,char**,int,int,int,int*,int));
+int menu(WINDOW* win, struct Callback cb, struct Data* data, struct Binding bind, int ptrs[2]);
 int load_data(struct List** list);
 int open_list(WINDOW* win, struct Data* data, void* _list);
 int add_task(WINDOW* win, struct Data* data, void* _task);
