@@ -4,7 +4,7 @@
 #include "linked/linked.h"
 struct Data;
 struct MenuData {
-	void (*dcb)(WINDOW*,struct Data*,char**,int,int,int,int*,int);
+	void (*dcb)(WINDOW*,struct Data*,int,int,int,int,int);
 	int* ptrs;
 	int mtop;
 };
@@ -32,7 +32,7 @@ struct Nopt {
 };
 void create_dir_if_not_exist(const char* path);
 void dialog(WINDOW** wins, const char* s);
-void display_opts(WINDOW* win, struct Data* data, char** ls, int size, int start, int top, int* ptrs, int mode);
+void display_opts(WINDOW* win, struct Data* data, int size, int p, int start, int stop, int attrs);
 int menu(WINDOW* win, struct Callback cb, struct Data* data, struct Binding bind, int ptrs[2]);
 int load_data(struct List** list);
 int open_list(WINDOW* win, struct Data* data, void* _list);

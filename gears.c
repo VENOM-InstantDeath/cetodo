@@ -62,125 +62,105 @@ int search_binding(int ch, struct Binding bind) {
 	return -1;
 }
 
-void display_opts(WINDOW* win, struct Data* data, char** ls, int size, int start, int top, int* ptrs, int mode) {
+void display_opts(WINDOW* win, struct Data* data, int size, int p, int start, int stop, int attrs) {
 	void** _data = (void**)data->data;
 	struct Nopt* nopt = (struct Nopt*)_data[0];
 	char *str = malloc(nopt->str_size); str[nopt->str_size-1]=0;
-	switch (mode) {
-		case 0:
-			if (size < top) { top = size; }
-			int p=0;
-			for (int i=start; i<top; i++) {
-				if (data->islist) {
-					char *buff = calloc(4,1);
-					snprintf(buff, 4, "%d", ((struct List*)_data[1])[i].size);
-					mvwaddstr(win, p, 0, buff);
-					free(buff);
-				} else {
-					if (list_get((struct List*)_data[1],i)->status) mvwaddstr(win, p, 0, "[x]");
-					else mvwaddstr(win, p, 0, "[ ]");
-				}
-				mvwaddnstr(win, p, 4, ls[i], nopt->str_size-1);p++;
-			}
-			free(str);
-			return;
-		case 1:
-			memset(str, ' ', nopt->str_size-1);strncpy(str, ls[ptrs[1]], nopt->str_size);
-			mvwaddnstr(win, ptrs[0], 4, str, nopt->str_size-1);
-
-			if (nopt->underline) wattron(win, A_UNDERLINE); else wattron(win, COLOR_PAIR(1));
-			memset(str, ' ', nopt->str_size-1);strncpy(str, ls[ptrs[1]-1], nopt->str_size);
-			mvwaddnstr(win, ptrs[0]-1, 4, str, nopt->str_size-1);
-			if (nopt->underline) wattroff(win, A_UNDERLINE); else wattroff(win, COLOR_PAIR(1));
-			free(str);
-			return;
-		case 2:
-			memset(str, ' ', nopt->str_size-1);strncpy(str, ls[ptrs[1]], nopt->str_size);
-			mvwaddnstr(win, ptrs[0], 4, str, nopt->str_size-1);
-
-			if (nopt->underline) wattron(win, A_UNDERLINE); else wattron(win, COLOR_PAIR(1));
-			memset(str, ' ', nopt->str_size-1);strncpy(str, ls[ptrs[1]+1], nopt->str_size);
-			mvwaddnstr(win, ptrs[0]+1, 4, str, nopt->str_size-1);
-			if (nopt->underline) wattroff(win, A_UNDERLINE); else wattroff(win, COLOR_PAIR(1));
-			free(str);
-			return;
-		case 3:
-			memset(str, ' ', nopt->str_size-1);strncpy(str, ls[ptrs[1]], nopt->str_size);
-			if (nopt->underline) wattron(win, A_UNDERLINE); else wattron(win, COLOR_PAIR(1));
-			mvwaddnstr(win, ptrs[0], 4, str, nopt->str_size-1);
-			if (nopt->underline) wattroff(win, A_UNDERLINE); else wattroff(win, COLOR_PAIR(1));
-			free(str);
-			return;
+	if (stop==-1) {
+		if (data->islist) {
+			char *buff = calloc(4,1);
+			snprintf(buff, 4, "%d", ((struct List*)_data[1])[start].size);
+			mvwaddstr(win, p, 0, buff);
+			free(buff);
+		} else {
+			if (list_get((struct List*)_data[1],start)->status) mvwaddstr(win, p, 0, "[x]");
+			else mvwaddstr(win, p, 0, "[ ]");
+		}
+		memset(str, ' ', nopt->str_size-1);strncpy(str, data->ls[start], nopt->str_size);
+		if (attrs!=-1)wattron(win, attrs);
+		mvwaddnstr(win, p, 4, str, nopt->str_size-1);
+		if (attrs!=-1)wattroff(win, attrs);
+		free(str);
+		return;
 	}
+	int e=0;
+	if (stop>size) stop=size;
+	for (int i=start; i<stop; i++) {
+		if (data->islist) {
+			char *buff = calloc(4,1);
+			snprintf(buff, 4, "%d", ((struct List*)_data[1])[i].size);
+			mvwaddstr(win, e, 0, buff);
+			free(buff);
+		} else {
+			if (list_get((struct List*)_data[1],i)->status) mvwaddstr(win, e, 0, "[x]");
+			else mvwaddstr(win, e, 0, "[ ]");
+		}
+		mvwaddnstr(win, e, 4, data->ls[i], nopt->str_size-1);
+		e++;
+	}
+	free(str);
 }
 
-void mscroll(WINDOW* win, struct Callback cb, struct Data* data, int ptrs[2], int y, char** ls, int mode) {
+void mscroll(WINDOW* win, struct Data* data, int size, int ptrs[2], int mode) {
 	switch (mode) {
 		case 0:
+			data->menu.dcb(win, data, size, ptrs[0], ptrs[1], -1, -1);
 			wscrl(win, -1);
-			data->menu.mtop--; ptrs[0]++;
-			wmove(win,0,0);wclrtobot(win);
-			data->menu.dcb(win, data, ls, cb.nmemb, data->menu.mtop-y, data->menu.mtop, ptrs, 0);
-			data->menu.dcb(win, data, ls, cb.nmemb,data->menu.mtop-y,data->menu.mtop,ptrs,1);
-			ptrs[0]--;ptrs[1]--;
+			data->menu.dcb(win, data, size, ptrs[0], ptrs[1]-1, -1, COLOR_PAIR(1));
+			ptrs[1]--;
 			return;
 		case 1:
-			wscrl(win, -1);
-			data->menu.mtop++; ptrs[0]--;
-			wmove(win,0,0);wclrtobot(win);
-			data->menu.dcb(win, data, ls, cb.nmemb, data->menu.mtop-y, data->menu.mtop, ptrs, 0);
-			data->menu.dcb(win, data, ls, cb.nmemb,data->menu.mtop-y,data->menu.mtop,ptrs,2);
-			ptrs[0]++;ptrs[1]++;
+			data->menu.dcb(win, data, size, ptrs[0], ptrs[1], -1, -1);
+			wscrl(win, 1);
+			data->menu.dcb(win, data, size, ptrs[0], ptrs[1]+1, -1, COLOR_PAIR(1));
+			ptrs[1]++;
 			return;
 	}
 }
 
 int menu(WINDOW* win, struct Callback cb, struct Data* data, struct Binding bind, int ptrs[2]) {
-	int y; int x; getmaxyx(win, y, x);
-	char** ls = data->ls;
-	/*int p = ptrs[0];
-	int sp = ptrs[1];*/
-	data->menu.ptrs=ptrs;
-	data->menu.mtop = y;
-	int size = cb.nmemb;
-	if (size) {
-		data->menu.dcb(win, data, ls, cb.nmemb, 0, y, ptrs,  0);
-		data->menu.dcb(win, data, ls, cb.nmemb, 0, data->menu.mtop, ptrs, 3);
+	int y,x; getmaxyx(win,y,x);
+	if (cb.nmemb) {
+		data->menu.dcb(win, data, cb.nmemb, ptrs[0], ptrs[1], -1, COLOR_PAIR(1));
 	} else mvwaddstr(win, 0, 4, "No hay tareas por aquí.");
 	for (;;) {
 		int ch = wgetch(win);
-		if (ch == KEY_UP) {
-			if (!ptrs[1]) continue;
-			if (!ptrs[0]) {
-				mscroll(win, cb, data, ptrs, y, ls, 0);
-			} else {
-				data->menu.dcb(win, data, ls, cb.nmemb,data->menu.mtop-y,data->menu.mtop,ptrs,1);
+		switch (ch) {
+			case 27:
+				return 0;
+			case 10:
+				if (!cb.nmemb) break;
+				return cb.func[ptrs[1]](win, data, cb.args[ptrs[1]]);
+			case KEY_UP:
+				if (!cb.nmemb||!ptrs[1]) break;
+				if (!ptrs[0]) {
+					mscroll(win, data, cb.nmemb, data->menu.ptrs, 0);
+					break;
+				}
+				data->menu.dcb(win, data, cb.nmemb, ptrs[0], ptrs[1], -1, -1);
+				data->menu.dcb(win, data, cb.nmemb, ptrs[0]-1, ptrs[1]-1, -1, COLOR_PAIR(1));
 				ptrs[0]--;ptrs[1]--;
-			}
-		}
-		else if (ch == KEY_DOWN) {
-			if (ptrs[1] == size-1 || !size) continue;
-			if (ptrs[1] == data->menu.mtop-1) {
-				mscroll(win, cb, data, ptrs, y, ls, 1);
-			} else {
-				data->menu.dcb(win, data, ls, cb.nmemb,data->menu.mtop-y,data->menu.mtop,ptrs,2);
+				break;
+			case KEY_DOWN:
+				if (!cb.nmemb||ptrs[1]==cb.nmemb-1) break;
+				if (ptrs[0]==y-1) {
+					mscroll(win, data, cb.nmemb, data->menu.ptrs, 1);
+					break;
+				}
+				data->menu.dcb(win, data, cb.nmemb, ptrs[0], ptrs[1], -1, -1);
+				data->menu.dcb(win, data, cb.nmemb, ptrs[0]+1, ptrs[1]+1, -1, COLOR_PAIR(1));
 				ptrs[0]++;ptrs[1]++;
-			}
-		}
-		else if (ch == 27) {return 0;}
-		else if (ch == 10) {
-			if(!size)continue;
-			if (cb.func[data->menu.ptrs[1]] == NULL) return 1;
-			int res = cb.func[data->menu.ptrs[1]](win, data, cb.args[data->menu.ptrs[1]]);
-			return res;
-		} else {
-			int index = search_binding(ch, bind);
-			if (index != -1) {
-				void* param = size ? cb.args[data->menu.ptrs[1]] : NULL;
-				return bind.func[index](win, data, param);
+				break;
+			default: {
+				int index = search_binding(ch, bind);
+				if (index != -1) {
+					void* param = cb.nmemb ? cb.args[data->menu.ptrs[1]] : NULL;
+					return bind.func[index](win, data, param);
+				}
 			}
 		}
 	}
+	return 1;
 }
 
 int load_data(struct List** list) {
@@ -258,7 +238,7 @@ int task_check(WINDOW* win, struct Data* data, void* _task) {
 	struct List* list_of_lists = (struct List*)((void**)data->data)[2];
 	int* size = (int*)((void**)data->data)[3];
 	struct Task* task = (struct Task*)_task;
-	int p = data->menu.ptrs[1];
+	int p = data->menu.ptrs[0];
 	switch (task->status) {
 		case 1:
 			mvwaddch(win, p, 1, ' ');
@@ -274,7 +254,8 @@ int task_check(WINDOW* win, struct Data* data, void* _task) {
 }
 
 int open_list(WINDOW* win, struct Data* data, void* _list) {
-	wmove(win,0,0); wclrtobot(win); wrefresh(win);
+	WINDOW* main = dupwin(win);
+	wmove(main,0,0); wclrtobot(main);
 	struct List* list = (struct List*)_list;
 	struct Nopt nopt; nopt.underline=0; nopt.str_size=50;
 	void** ogdata = (void**)data->data;
@@ -283,8 +264,10 @@ int open_list(WINDOW* win, struct Data* data, void* _list) {
 	struct Callback cb;
 	struct Data _data;
 	void* data_arr[5] = {&nopt, list, list_of_lists, &size, &cb};
+	int ptrs[2] = {0,0};
 	_data.islist=0; _data.wins=data->wins; _data.wins_size=data->wins_size;
-	_data.data=data_arr; _data.menu.dcb=display_opts;
+	_data.data=data_arr; _data.menu.dcb=display_opts; _data.menu.ptrs=ptrs;
+	_data.wins[0]=main;
 	cb.func = malloc(sizeof(int(*)(WINDOW*, struct Data*, void*))*list->size);
 	cb.args = malloc(sizeof(void*)*list->size);
 	char **ls = malloc(sizeof(char*)*list->size);
@@ -298,12 +281,14 @@ int open_list(WINDOW* win, struct Data* data, void* _list) {
 	int keys[7] = {'a', 's', 'q', 'D', 'r', 'o', 'l'};
 	int (*func[7])(WINDOW*, struct Data*,void*) = {add_task, goback, quit, del_task, rename_task, move_up, move_down};
 	struct Binding bind = {keys, func, 7};
-	int ptrs[2] = {0,0};
+	int y = getmaxy(main);
+	_data.menu.dcb(main, &_data, cb.nmemb, 0, 0, y, -1);
 	for (;;) {
-		if (menu(win, cb, &_data, bind, ptrs)) {
-			wmove(win, 0, 0); wclrtobot(win);
-		} else break;
+		if (!menu(main, cb, &_data, bind, _data.menu.ptrs)) {break;}
 	}
+	delwin(main);
+	touchwin(win);
+	wrefresh(win);
 	return 1;
 }
 
@@ -327,6 +312,7 @@ int add_task(WINDOW* win, struct Data* data, void* _task) {
 
 		data->ls = realloc(data->ls, sizeof(char*)*(list->size+1));
 		data->ls[list->size] = ptr;
+
 		cb->func = realloc(cb->func, sizeof(int(*)(WINDOW*, struct Data*, void*))*(list->size+1));
 		cb->func[list->size] = task_check;
 		cb->args = realloc(cb->args, sizeof(void*)*(list->size+1));
@@ -335,7 +321,12 @@ int add_task(WINDOW* win, struct Data* data, void* _task) {
 
 		list->size++;
 		write_data(list_of_lists, *size);
+
+		if (cb->nmemb<y-1) {data->menu.dcb(win, data, cb->nmemb, cb->nmemb-1, cb->nmemb-1, -1, -1);}
 	}
+	delwin(_win);
+	touchwin(win);
+	wrefresh(win);
 	return 1;
 }
 
@@ -421,8 +412,8 @@ int move_up(WINDOW* win, struct Data* data, void* _task) {
 	cb->args[data->menu.ptrs[1]-1] = atemp;
 
 	if (data->menu.ptrs[0] == data->menu.mtop) {
-		mscroll(win, *cb, data, data->menu.ptrs, y, data->ls, 0);
-	} else {data->menu.ptrs[0]++;data->menu.ptrs[1]++;}
+		mscroll(win, data, cb->nmemb,data->menu.ptrs, 0);
+	} else {data->menu.ptrs[0]--;data->menu.ptrs[1]--;}
 
 	write_data(list_of_lists, *size);
 	return 1;
@@ -449,7 +440,7 @@ int move_down(WINDOW* win, struct Data* data, void* _task) {
 	cb->args[data->menu.ptrs[1]+1] = atemp;
 
 	if (data->menu.ptrs[0] == data->menu.mtop) {
-		mscroll(win, *cb, data, data->menu.ptrs, y, data->ls, 1);
+		mscroll(win, data, cb->nmemb,data->menu.ptrs, 1);
 	} else {data->menu.ptrs[0]++;data->menu.ptrs[1]++;}
 
 	write_data(list_of_lists, *size);

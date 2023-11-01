@@ -13,6 +13,7 @@ int main() {
 	WINDOW* stdscr = initscr();
 	start_color(); use_default_colors();
 	curs_set(0); noecho();
+	set_escdelay(100);
     	init_pair(1,0,15);  // Fondo blanco con letras negras
     	init_pair(3,15,20); // Fondo azul con letras blancas
 	int std_y, std_x; getmaxyx(stdscr,std_y,std_x);
@@ -22,6 +23,7 @@ int main() {
 	WINDOW* wins[3] = {main, upbar, lowbar};
 
 	keypad(main, 1);
+	scrollok(main, 1);
 	wbkgd(upbar,COLOR_PAIR(1));
 
 	mvwaddstr(upbar, 0, 2, "ETODO");
@@ -48,14 +50,13 @@ int main() {
 	cb.nmemb = list_size;
 	struct Nopt nopt; nopt.underline=0; nopt.str_size=30;
 	void* _data[3] = {&nopt, list, &list_size};
-	struct Data data; data.wins=wins; data.wins_size=3; data.data=_data; data.ls=ls;
-	data.islist = 1; data.menu.dcb = display_opts;
-	struct Binding bind = {NULL, NULL, 0};
 	int ptrs[2] = {0,0};
+	struct Data data; data.wins=wins; data.wins_size=3; data.data=_data; data.ls=ls;
+	data.islist = 1; data.menu.dcb = display_opts; data.menu.ptrs=ptrs;
+	struct Binding bind = {NULL, NULL, 0};
+	data.menu.dcb(main, &data, cb.nmemb, 0, 0, std_y-3, -1);
 	for (;;) {
-		if (menu(main, cb, &data, bind, ptrs)) {
-			wmove(main, 0, 0); wclrtobot(main);
-		} else break;
+		if (!menu(main, cb, &data, bind, ptrs)) break;
 	}
 	free(cb.func);
 	free(cb.args);
