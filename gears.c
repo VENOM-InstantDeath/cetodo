@@ -73,7 +73,7 @@ void display_opts(WINDOW* win, struct Data* data, int size, int p, int start, in
 			mvwaddstr(win, p, 0, buff);
 			free(buff);
 		} else {
-			if (list_get((struct List*)_data[1],start)->status) mvwaddstr(win, p, 0, "[x]");
+			if (task_get((struct List*)_data[1],start)->status) mvwaddstr(win, p, 0, "[x]");
 			else mvwaddstr(win, p, 0, "[ ]");
 		}
 		memset(str, ' ', nopt->str_size-1);strncpy(str, data->ls[start], nopt->str_size);
@@ -83,7 +83,7 @@ void display_opts(WINDOW* win, struct Data* data, int size, int p, int start, in
 		free(str);
 		return;
 	}
-	int e=0;
+	int e=p;
 	if (stop>size) stop=size;
 	for (int i=start; i<stop; i++) {
 		if (data->islist) {
@@ -92,7 +92,7 @@ void display_opts(WINDOW* win, struct Data* data, int size, int p, int start, in
 			mvwaddstr(win, e, 0, buff);
 			free(buff);
 		} else {
-			if (list_get((struct List*)_data[1],i)->status) mvwaddstr(win, e, 0, "[x]");
+			if (task_get((struct List*)_data[1],i)->status) mvwaddstr(win, e, 0, "[x]");
 			else mvwaddstr(win, e, 0, "[ ]");
 		}
 		mvwaddnstr(win, e, 4, data->ls[i], nopt->str_size-1);
@@ -119,7 +119,7 @@ void mscroll(WINDOW* win, struct Data* data, int size, int ptrs[2], int mode) {
 }
 
 int menu(WINDOW* win, struct Callback cb, struct Data* data, struct Binding bind, int ptrs[2]) {
-	int y,x; getmaxyx(win,y,x);
+	int y = getmaxy(win);
 	if (cb.nmemb) {
 		data->menu.dcb(win, data, cb.nmemb, ptrs[0], ptrs[1], -1, COLOR_PAIR(1));
 	} else mvwaddstr(win, 0, 4, "No hay tareas por aquí.");
@@ -200,7 +200,7 @@ int load_data(struct List** list) {
 			int j=0;
 			struct json_object* kobj = value;
 			json_object_object_foreach(kobj, k, v) {
-				list_add(&(*list)[i], k, json_object_get_int(v));
+				task_add(&(*list)[i], k, json_object_get_int(v));
 				(*list)[i].size++;
 				j++;
 			}
@@ -225,7 +225,7 @@ void write_data(struct List* list, int size) {
 	for (int i=0; i<size; i++) {
 		struct json_object* kobj = json_object_new_object();
 		for (int j=0; j<list[i].size; j++) {
-			json_object_object_add(kobj, list_get(&list[i], j)->id, json_object_new_int(list_get(&list[i], j)->status));
+			json_object_object_add(kobj, task_get(&list[i], j)->id, json_object_new_int(task_get(&list[i], j)->status));
 		}
 		json_object_object_add(jobj, list[i].id, kobj);
 	}
@@ -273,8 +273,8 @@ int open_list(WINDOW* win, struct Data* data, void* _list) {
 	char **ls = malloc(sizeof(char*)*list->size);
 	for (int i=0; i<list->size; i++) {
 		cb.func[i] = task_check;
-		cb.args[i] = (void*)list_get(list, i);
-		ls[i] = list_get(list, i)->id;
+		cb.args[i] = (void*)task_get(list, i);
+		ls[i] = task_get(list, i)->id;
 	}
 	cb.nmemb=list->size;
 	_data.ls = ls;
@@ -308,7 +308,7 @@ int add_task(WINDOW* win, struct Data* data, void* _task) {
 	char* ptr=NULL;
 	int r = ampsread(_win, &ptr, 1, 9, 19, 50, 0, 1);
 	if (!r) {
-		list_add(list, ptr, 0);
+		task_add(list, ptr, 0);
 
 		data->ls = realloc(data->ls, sizeof(char*)*(list->size+1));
 		data->ls[list->size] = ptr;
@@ -316,7 +316,7 @@ int add_task(WINDOW* win, struct Data* data, void* _task) {
 		cb->func = realloc(cb->func, sizeof(int(*)(WINDOW*, struct Data*, void*))*(list->size+1));
 		cb->func[list->size] = task_check;
 		cb->args = realloc(cb->args, sizeof(void*)*(list->size+1));
-		cb->args[list->size] = list_get(list, list->size);
+		cb->args[list->size] = task_get(list, list->size);
 		cb->nmemb++;
 
 		list->size++;
@@ -351,18 +351,33 @@ int del_task(WINDOW* win, struct Data* data, void* _task) {
 	struct List* list_of_lists = (struct List*)((void**)data->data)[2];
 	int* size = (int*)((void**)data->data)[3];
 	struct Callback* cb = (struct Callback*)((void**)data->data)[4];
-	int r = list_popat(list, data->menu.ptrs[1]);
+	int y = getmaxy(win);
+
+	int r = task_popat(list, data->menu.ptrs[1]);
 	if (!r) return 1;
-	_popat((void**)data->ls, data->menu.ptrs[1], list->size);
-	data->ls = realloc(data->ls, sizeof(char*)*(list->size-1));
-	_popat((void**)cb->func, data->menu.ptrs[1], list->size);
-	cb->func = realloc(cb->func, sizeof(int(*)(WINDOW*, struct Data*, void*))*(list->size+1));
-	_popat((void**)cb->args, data->menu.ptrs[1], list->size);
-	cb->args = realloc(cb->args, sizeof(void*)*(list->size-1));
+
+	_popat((void**)data->ls, data->menu.ptrs[1], list->size); data->ls = realloc(data->ls, sizeof(char*)*(list->size-1));
+	_popat((void**)cb->func, data->menu.ptrs[1], list->size); cb->func = realloc(cb->func, sizeof(int(*)(WINDOW*, struct Data*, void*))*(list->size+1));
+	_popat((void**)cb->args, data->menu.ptrs[1], list->size); cb->args = realloc(cb->args, sizeof(void*)*(list->size-1));
 	cb->nmemb--;
 	list->size--;
-	if (data->menu.ptrs[1] && data->menu.ptrs[1] == list->size) {
-		data->menu.ptrs[0]--;data->menu.ptrs[1]--;
+	int top = (data->menu.ptrs[1]-data->menu.ptrs[0])+(y-1);
+	if (list->size >= y) {
+		if (top == list->size) {
+			/*print from up top until sp (including sp)*/
+			data->menu.ptrs[1]--;
+			int lowtop = data->menu.ptrs[1] - data->menu.ptrs[0];
+			data->menu.dcb(win, data, cb->nmemb, 0, lowtop, data->menu.ptrs[1]+1, COLOR_PAIR(1));
+		} else {
+			/*print from sp until bottom*/
+			data->menu.dcb(win, data, cb->nmemb, data->menu.ptrs[0], data->menu.ptrs[1], top+1, COLOR_PAIR(1));
+		}
+	} else {
+		wmove(win, data->menu.ptrs[0], 0); wclrtobot(win);
+		data->menu.dcb(win, data, cb->nmemb, 0, 0, y, -1);
+		if (data->menu.ptrs[1] == list->size && data->menu.ptrs[1]) {
+			data->menu.ptrs[0]--; data->menu.ptrs[1]--;
+		}
 	}
 	write_data(list_of_lists, *size);
 	return 1;
