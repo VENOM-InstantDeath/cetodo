@@ -2,6 +2,11 @@
 #include <stdlib.h>
 #include "linked.h"
 
+struct Lists lists_init() {
+	struct Lists l = {NULL, 0};
+	return l;
+}
+
 struct List list_init() {
 	struct List l;
 	l.head = NULL;
@@ -23,19 +28,27 @@ void task_add(struct List* head, char* id, int status) {
 		node->id = id; node->status = status; node->next = NULL;
 		curr->next = node;
 	}
+	head->size++;
 }
 void list_add(struct Lists* head, char* id) {
 	if (head->head == NULL) {
 		struct List* node = malloc(sizeof(struct List));
-		node->id = id; node->next = NULL;
+		node->id = id;
+		node->next = NULL;
+		node->size = 0;
+		node->head = NULL;
 		head->head = node;
 	} else {
 		struct List* curr = head->head;
 		while (curr->next != NULL) {curr = curr->next;}
-		struct List* node = malloc(sizeof(struct Task));
-		node->id = id; node->next = NULL;
+		struct List* node = malloc(sizeof(struct List));
+		node->id = id;
+		node->next = NULL;
+		node->size = 0;
+		node->head = NULL;
 		curr->next = node;
 	}
+	head->size++;
 }
 
 void task_ladd(struct List* head, char* id, int status) {
@@ -53,7 +66,7 @@ void list_ladd(struct Lists* head, char* id) {
 	}
 	struct List* node = head->head;
 	struct List* new = malloc(sizeof(struct Task));
-	new->id = id; new->next = node;
+	new->id = id; new->next = node; new->size = 0;
 	head->head = new;
 }
 
@@ -81,7 +94,7 @@ void list_print(struct Lists* head) {
 void task_pop(struct List* head) {
 	if (head->head == NULL) return;
 	struct Task* curr = head->head;
-	if (curr->next == NULL) {free(head->head);head->head = NULL;return;}
+	if (curr->next == NULL) {free(head->head);head->head = NULL;head->size--;return;}
 	while (curr->next != NULL) {
 		if (curr->next->next == NULL) break;
 		curr = curr->next;
@@ -92,13 +105,14 @@ void task_pop(struct List* head) {
 void list_pop(struct Lists* head) {
 	if (head->head == NULL) return;
 	struct List* curr = head->head;
-	if (curr->next == NULL) {free(head->head);head->head = NULL;return;}
+	if (curr->next == NULL) {free(head->head);head->head = NULL;head->size--;return;}
 	while (curr->next != NULL) {
 		if (curr->next->next == NULL) break;
 		curr = curr->next;
 	}
 	free(curr->next);
 	curr->next=NULL;
+	head->size--;
 }
 
 int task_popat(struct List* head, int index) {
@@ -117,11 +131,12 @@ int task_popat(struct List* head, int index) {
 	struct Task* tmp = curr->next->next;
 	free(curr->next);
 	curr->next = tmp;
+	head->size--;
 	return 1;
 }
 int list_popat(struct Lists* head, int index) {
 	if (head->head == NULL) return 0;
-	if (!index) {list_rpop(head);return 1;}
+	if (!index) {list_pop(head);return 1;}
 	struct List* curr = head->head;
 	/*if (!curr->next && !index) {
 		task_pop(head);
@@ -135,6 +150,7 @@ int list_popat(struct Lists* head, int index) {
 	struct List* tmp = curr->next->next;
 	free(curr->next);
 	curr->next = tmp;
+	head->size--;
 	return 1;
 }
 
@@ -143,6 +159,7 @@ void task_rpop(struct List* head) {
 	struct Task* next = head->head->next;
 	free(head->head);
 	head->head = next;
+	head->size--;
 }
 void list_rpop(struct Lists* head) {
 	if (head->head == NULL) return;
@@ -172,6 +189,33 @@ struct List* list_get(struct Lists* head, int index) {
 	}
 	if (indx == index) return curr;
 	else return NULL;
+}
+
+void task_set(struct List* head, int index, char* id, int value) {
+	struct Task* curr = head->head;
+	int indx=0;
+	if (index >= head->size) return;
+	while (curr->next != NULL) {
+		if (indx==index) break;
+		indx++;
+		curr = curr->next;
+	}
+	curr->id = id;
+	curr->status = value;
+}
+
+void list_set(struct Lists* head, int index, char* id, int size, struct Task* thead) {
+	struct List* curr = head->head;
+	int indx=0;
+	if (index >= head->size) return;
+	while (curr->next != NULL) {
+		if (indx==index) break;
+		indx++;
+		curr = curr->next;
+	}
+	curr->id = id;
+	curr->size = size;
+	curr->head = thead;
 }
 
 int task_search(struct List* head, char* id) {

@@ -1,3 +1,4 @@
+#include <asm-generic/socket.h>
 #include <curses.h>
 #include <json-c/json_object.h>
 #include <json-c/json_types.h>
@@ -8,6 +9,10 @@
 #include <fcntl.h>
 #include <ncurses.h>
 #include <sys/stat.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <json-c/json.h>
 #include "gears.h"
 #include "libncread/ncread.h"
@@ -69,7 +74,7 @@ void display_opts(WINDOW* win, struct Data* data, int size, int p, int start, in
 	if (stop==-1) {
 		if (data->islist) {
 			char *buff = calloc(4,1);
-			snprintf(buff, 4, "%d", ((struct List*)_data[1])[start].size);
+			snprintf(buff, 4, "%d", list_get((struct Lists*)_data[1],start)->size);
 			mvwaddstr(win, p, 0, buff);
 			free(buff);
 		} else {
@@ -77,6 +82,7 @@ void display_opts(WINDOW* win, struct Data* data, int size, int p, int start, in
 			else mvwaddstr(win, p, 0, "[ ]");
 		}
 		memset(str, ' ', nopt->str_size-1);strncpy(str, data->ls[start], nopt->str_size);
+		wmove(win, p, 4); wclrtoeol(win);
 		if (attrs!=-1)wattron(win, attrs);
 		mvwaddnstr(win, p, 4, str, nopt->str_size-1);
 		if (attrs!=-1)wattroff(win, attrs);
@@ -88,7 +94,7 @@ void display_opts(WINDOW* win, struct Data* data, int size, int p, int start, in
 	for (int i=start; i<stop; i++) {
 		if (data->islist) {
 			char *buff = calloc(4,1);
-			snprintf(buff, 4, "%d", ((struct List*)_data[1])[i].size);
+			snprintf(buff, 4, "%d", list_get((struct Lists*)_data[1],i)->size);
 			mvwaddstr(win, e, 0, buff);
 			free(buff);
 		} else {
@@ -163,7 +169,7 @@ int menu(WINDOW* win, struct Callback cb, struct Data* data, struct Binding bind
 	return 1;
 }
 
-int load_data(struct List** list) {
+int load_data(struct Lists* lists) {
 	char* HOME = getenv("HOME");
 	int datadir_size = strlen(HOME)+20;
 	char* datadir = calloc(datadir_size+1,1);
@@ -180,10 +186,10 @@ int load_data(struct List** list) {
 		FILE* F = fopen(datafile, "w");
 		fputs(json, F);
 		fclose(F);
-		(*list)[0].id = "Default"; // FIXME ERROR Not initialized
+		/* (*list)[0].id = "Default"; // FIXME ERROR Not initialized
 		(*list)[0].head = NULL;
 		free((void*)json);
-		(*list)[0].size = 0;
+		(*list)[0].size = 0; */
 		size = 1;
 	} else {
 		FILE* F = fopen(datafile, "r");
@@ -193,15 +199,11 @@ int load_data(struct List** list) {
 		struct json_object *jobj = json_tokener_parse(buff);
 		int i=0;
 		json_object_object_foreach(jobj, key, value) {
-			*list = realloc(*list, sizeof(struct List)*(i+1));
-			(*list)[i].id=key;
-			(*list)[i].head=NULL;
-			(*list)[i].size=0;
+			list_add(lists, key);
 			int j=0;
 			struct json_object* kobj = value;
 			json_object_object_foreach(kobj, k, v) {
-				task_add(&(*list)[i], k, json_object_get_int(v));
-				(*list)[i].size++;
+				task_add(list_get(lists, i), k, json_object_get_int(v));
 				j++;
 			}
 			i++;
@@ -213,29 +215,29 @@ int load_data(struct List** list) {
 	return size;
 }
 
-void write_data(struct List* list, int size) {
+void write_data(struct Lists* lists, int size) {
 	char* HOME = getenv("HOME");
 	int datadir_size = strlen(HOME)+20;
 	char* datadir = calloc(datadir_size+1,1);
 	char* datafile = calloc(datadir_size+9+1, 1);
 	strcpy(datadir, HOME); strcat(datadir, "/.local/share/etodo/");
 	strcpy(datafile, datadir); strcat(datafile, "data.json");
-	FILE *F = fopen(datafile, "w");
 	struct json_object* jobj = json_object_new_object();
 	for (int i=0; i<size; i++) {
 		struct json_object* kobj = json_object_new_object();
-		for (int j=0; j<list[i].size; j++) {
-			json_object_object_add(kobj, task_get(&list[i], j)->id, json_object_new_int(task_get(&list[i], j)->status));
+		for (int j=0; j<list_get(lists, i)->size; j++) {
+			json_object_object_add(kobj, task_get(list_get(lists,i), j)->id, json_object_new_int(task_get(list_get(lists,i), j)->status));
 		}
-		json_object_object_add(jobj, list[i].id, kobj);
+		json_object_object_add(jobj, list_get(lists,i)->id, kobj);
 	}
 	const char *json = json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PRETTY);
+	FILE *F = fopen(datafile, "w");
 	fputs(json, F);
 	fclose(F);
 }
 
 int task_check(WINDOW* win, struct Data* data, void* _task) {
-	struct List* list_of_lists = (struct List*)((void**)data->data)[2];
+	struct Lists* list_of_lists = (struct Lists*)((void**)data->data)[2];
 	int* size = (int*)((void**)data->data)[3];
 	struct Task* task = (struct Task*)_task;
 	int p = data->menu.ptrs[0];
@@ -249,7 +251,7 @@ int task_check(WINDOW* win, struct Data* data, void* _task) {
 			task->status = 1;
 			break;
 	}
-	write_data(list_of_lists, *size);
+	write_data(list_of_lists, list_of_lists->size);
 	return 1;
 }
 
@@ -259,7 +261,7 @@ int open_list(WINDOW* win, struct Data* data, void* _list) {
 	struct List* list = (struct List*)_list;
 	struct Nopt nopt; nopt.underline=0; nopt.str_size=50;
 	void** ogdata = (void**)data->data;
-	struct List* list_of_lists = (struct List*)ogdata[1];
+	struct Lists* list_of_lists = (struct Lists*)ogdata[1];
 	int size = *((int*)ogdata[2]);
 	struct Callback cb;
 	struct Data _data;
@@ -294,7 +296,7 @@ int open_list(WINDOW* win, struct Data* data, void* _list) {
 
 int add_task(WINDOW* win, struct Data* data, void* _task) {
 	struct List* list = (struct List*)((void**)data->data)[1];
-	struct List* list_of_lists = (struct List*)((void**)data->data)[2];
+	struct Lists* list_of_lists = (struct Lists*)((void**)data->data)[2];
 	int* size = (int*)((void**)data->data)[3];
 	struct Callback* cb = (struct Callback*)((void**)data->data)[4];
 	int y, x; getmaxyx(stdscr, y, x);
@@ -310,17 +312,53 @@ int add_task(WINDOW* win, struct Data* data, void* _task) {
 	if (!r) {
 		task_add(list, ptr, 0);
 
-		data->ls = realloc(data->ls, sizeof(char*)*(list->size+1));
-		data->ls[list->size] = ptr;
+		data->ls = realloc(data->ls, sizeof(char*)*(list->size));
+		data->ls[list->size-1] = ptr;
 
-		cb->func = realloc(cb->func, sizeof(int(*)(WINDOW*, struct Data*, void*))*(list->size+1));
-		cb->func[list->size] = task_check;
-		cb->args = realloc(cb->args, sizeof(void*)*(list->size+1));
-		cb->args[list->size] = task_get(list, list->size);
+		cb->func = realloc(cb->func, sizeof(int(*)(WINDOW*, struct Data*, void*))*(list->size));
+		cb->func[list->size-1] = task_check;
+		cb->args = realloc(cb->args, sizeof(void*)*(list->size));
+		cb->args[list->size-1] = task_get(list, list->size-1);
 		cb->nmemb++;
 
-		list->size++;
-		write_data(list_of_lists, *size);
+		write_data(list_of_lists, list_of_lists->size);
+
+		if (cb->nmemb<y-1) {data->menu.dcb(win, data, cb->nmemb, cb->nmemb-1, cb->nmemb-1, -1, -1);}
+	}
+	delwin(_win);
+	touchwin(win);
+	wrefresh(win);
+	return 1;
+}
+int add_list(WINDOW* win, struct Data* data, void* _list) {
+	//struct List* list = (struct List*)((void**)data->data)[1];
+	struct Lists* list_of_lists = (struct Lists*)((void**)data->data)[1];
+	int* size = (int*)((void**)data->data)[2];
+	struct Callback* cb = (struct Callback*)((void**)data->data)[3];
+	int y, x; getmaxyx(stdscr, y, x);
+	WINDOW* _win = newwin(3, 30, y/2-1, x/2-15);
+	wbkgd(_win, COLOR_PAIR(3));
+	keypad(_win, 1);
+	box(_win, ACS_VLINE, ACS_HLINE);
+	mvwaddstr(_win, 0, 1, "Añadir lista");
+	mvwaddstr(_win, 1, 2, "Lista: ");
+	wrefresh(_win);
+	char* ptr=NULL;
+	int r = ampsread(_win, &ptr, 1, 9, 19, 50, 0, 1);
+	if (!r) {
+		list_add(list_of_lists, ptr);
+
+		data->ls = realloc(data->ls, sizeof(char*)*(list_of_lists->size));
+		data->ls[list_of_lists->size-1] = ptr;
+
+		cb->func = realloc(cb->func, sizeof(int(*)(WINDOW*, struct Data*, void*))*(list_of_lists->size));
+		cb->func[list_of_lists->size-1] = open_list;
+		cb->args = realloc(cb->args, sizeof(void*)*(list_of_lists->size));
+		cb->args[list_of_lists->size-1] = list_get(list_of_lists, list_of_lists->size-1);
+		cb->nmemb++;
+		(*size)++;
+
+		write_data(list_of_lists, list_of_lists->size);
 
 		if (cb->nmemb<y-1) {data->menu.dcb(win, data, cb->nmemb, cb->nmemb-1, cb->nmemb-1, -1, -1);}
 	}
@@ -348,7 +386,7 @@ void _popat(void** var, int index, int size) {
 int del_task(WINDOW* win, struct Data* data, void* _task) {
 	if (!_task) return 1;
 	struct List* list = (struct List*)((void**)data->data)[1];
-	struct List* list_of_lists = (struct List*)((void**)data->data)[2];
+	struct Lists* list_of_lists = (struct Lists*)((void**)data->data)[2];
 	int* size = (int*)((void**)data->data)[3];
 	struct Callback* cb = (struct Callback*)((void**)data->data)[4];
 	int y = getmaxy(win);
@@ -356,11 +394,11 @@ int del_task(WINDOW* win, struct Data* data, void* _task) {
 	int r = task_popat(list, data->menu.ptrs[1]);
 	if (!r) return 1;
 
-	_popat((void**)data->ls, data->menu.ptrs[1], list->size); data->ls = realloc(data->ls, sizeof(char*)*(list->size-1));
-	_popat((void**)cb->func, data->menu.ptrs[1], list->size); cb->func = realloc(cb->func, sizeof(int(*)(WINDOW*, struct Data*, void*))*(list->size+1));
-	_popat((void**)cb->args, data->menu.ptrs[1], list->size); cb->args = realloc(cb->args, sizeof(void*)*(list->size-1));
+	_popat((void**)data->ls, data->menu.ptrs[1], list->size+1); data->ls = realloc(data->ls, sizeof(char*)*(list->size));
+	_popat((void**)cb->func, data->menu.ptrs[1], list->size+1); cb->func = realloc(cb->func, sizeof(int(*)(WINDOW*, struct Data*, void*))*(list->size));
+	_popat((void**)cb->args, data->menu.ptrs[1], list->size+1); cb->args = realloc(cb->args, sizeof(void*)*(list->size));
 	cb->nmemb--;
-	list->size--;
+	//list->size--;
 	int top = (data->menu.ptrs[1]-data->menu.ptrs[0])+(y-1);
 	if (list->size >= y) {
 		if (top == list->size) {
@@ -379,7 +417,43 @@ int del_task(WINDOW* win, struct Data* data, void* _task) {
 			data->menu.ptrs[0]--; data->menu.ptrs[1]--;
 		}
 	}
-	write_data(list_of_lists, *size);
+	write_data(list_of_lists, list_of_lists->size);
+	return 1;
+}
+int del_list(WINDOW* win, struct Data* data, void* _list) {
+	if (!_list) return 1;
+	struct Lists* list_of_lists = (struct Lists*)((void**)data->data)[1];
+	int* size = (int*)((void**)data->data)[2];
+	struct Callback* cb = (struct Callback*)((void**)data->data)[3];
+	int y = getmaxy(win);
+
+	int r = list_popat(list_of_lists, data->menu.ptrs[1]);
+	if (!r) return 1;
+
+	_popat((void**)data->ls, data->menu.ptrs[1], list_of_lists->size+1); data->ls = realloc(data->ls, sizeof(char*)*(list_of_lists->size));
+	_popat((void**)cb->func, data->menu.ptrs[1], list_of_lists->size+1); cb->func = realloc(cb->func, sizeof(int(*)(WINDOW*, struct Data*, void*))*(list_of_lists->size));
+	_popat((void**)cb->args, data->menu.ptrs[1], list_of_lists->size+1); cb->args = realloc(cb->args, sizeof(void*)*(list_of_lists->size));
+	cb->nmemb--;
+	//list->size--;
+	int top = (data->menu.ptrs[1]-data->menu.ptrs[0])+(y-1);
+	if (list_of_lists->size >= y) {
+		if (top == list_of_lists->size) {
+			/*print from up top until sp (including sp)*/
+			data->menu.ptrs[1]--;
+			int lowtop = data->menu.ptrs[1] - data->menu.ptrs[0];
+			data->menu.dcb(win, data, cb->nmemb, 0, lowtop, data->menu.ptrs[1]+1, COLOR_PAIR(1));
+		} else {
+			/*print from sp until bottom*/
+			data->menu.dcb(win, data, cb->nmemb, data->menu.ptrs[0], data->menu.ptrs[1], top+1, COLOR_PAIR(1));
+		}
+	} else {
+		wmove(win, data->menu.ptrs[0], 0); wclrtobot(win);
+		data->menu.dcb(win, data, cb->nmemb, 0, 0, y, -1);
+		if (data->menu.ptrs[1] == list_of_lists->size && data->menu.ptrs[1]) {
+			data->menu.ptrs[0]--; data->menu.ptrs[1]--;
+		}
+	}
+	write_data(list_of_lists, list_of_lists->size);
 	return 1;
 }
 
@@ -387,7 +461,7 @@ int rename_task(WINDOW* win, struct Data* data, void* _task) {
 	if (!_task) return 1;
 	struct Task* task = (struct Task*)_task;
 	struct List* list = (struct List*)((void**)data->data)[1];
-	struct List* list_of_lists = (struct List*)((void**)data->data)[2];
+	struct Lists* list_of_lists = (struct Lists*)((void**)data->data)[2];
 	int* size = (int*)((void**)data->data)[3];
 	struct Callback* cb = (struct Callback*)((void**)data->data)[4];
 	int y, x; getmaxyx(stdscr, y, x);
@@ -401,8 +475,35 @@ int rename_task(WINDOW* win, struct Data* data, void* _task) {
 	int r = ampsread(_win, &task->id, 1, 9, 19, 50, 0, 1);
 	if (!r) {
 		data->ls[data->menu.ptrs[1]] = task->id;
-		write_data(list_of_lists, *size);
+		write_data(list_of_lists, list_of_lists->size);
 	}
+	delwin(_win);
+	touchwin(win);
+	wrefresh(win);
+	return 1;
+}
+int rename_list(WINDOW* win, struct Data* data, void* _list) {
+	if (!_list) return 1;
+	struct List* list = (struct List*)_list;
+	struct Lists* list_of_lists = (struct Lists*)((void**)data->data)[1];
+	int* size = (int*)((void**)data->data)[2];
+	struct Callback* cb = (struct Callback*)((void**)data->data)[3];
+	int y, x; getmaxyx(stdscr, y, x);
+	WINDOW* _win = newwin(3, 30, y/2-1, x/2-15);
+	wbkgd(_win, COLOR_PAIR(3));
+	keypad(_win, 1);
+	box(_win, ACS_VLINE, ACS_HLINE);
+	mvwaddstr(_win, 0, 1, "Renombrar tarea");
+	mvwaddstr(_win, 1, 2, "Tarea: ");
+	wrefresh(_win);
+	int r = ampsread(_win, &list->id, 1, 9, 19, 50, 0, 1);
+	if (!r) {
+		data->ls[data->menu.ptrs[1]] = list->id;
+		write_data(list_of_lists, list_of_lists->size);
+	}
+	delwin(_win);
+	touchwin(win);
+	wrefresh(win);
 	return 1;
 }
 
@@ -410,7 +511,7 @@ int move_up(WINDOW* win, struct Data* data, void* _task) {
 	if (!_task) return 1;
 	struct Task* task = (struct Task*)_task;
 	struct List* list = (struct List*)((void**)data->data)[1];
-	struct List* list_of_lists = (struct List*)((void**)data->data)[2];
+	struct Lists* list_of_lists = (struct Lists*)((void**)data->data)[2];
 	int* size = (int*)((void**)data->data)[3];
 	struct Callback* cb = (struct Callback*)((void**)data->data)[4];
 	int y = getmaxy(win);
@@ -422,15 +523,61 @@ int move_up(WINDOW* win, struct Data* data, void* _task) {
 	int (*ftemp)(WINDOW*, struct Data*, void*) = cb->func[data->menu.ptrs[1]];
 	cb->func[data->menu.ptrs[1]] = cb->func[data->menu.ptrs[1]-1];
 	cb->func[data->menu.ptrs[1]-1] = ftemp;
-	void* atemp = cb->args[data->menu.ptrs[1]];
+	/*void* atemp = cb->args[data->menu.ptrs[1]];
 	cb->args[data->menu.ptrs[1]] = cb->args[data->menu.ptrs[1]-1];
-	cb->args[data->menu.ptrs[1]-1] = atemp;
+	cb->args[data->menu.ptrs[1]-1] = atemp;*/
 
-	if (data->menu.ptrs[0] == data->menu.mtop) {
+	struct Task* Ttemp = task_get(list, data->menu.ptrs[1]);
+	char* tid = strdup(Ttemp->id); int tstatus = Ttemp->status;
+	struct Task* Ttemp1 = task_get(list, data->menu.ptrs[1]-1);
+	task_set(list, data->menu.ptrs[1], Ttemp1->id, Ttemp1->status);
+	task_set(list, data->menu.ptrs[1]-1, tid, tstatus);
+
+	if (!data->menu.ptrs[0]) {
 		mscroll(win, data, cb->nmemb,data->menu.ptrs, 0);
 	} else {data->menu.ptrs[0]--;data->menu.ptrs[1]--;}
 
-	write_data(list_of_lists, *size);
+	data->menu.dcb(win, data, cb->nmemb, data->menu.ptrs[0]+1, data->menu.ptrs[1]+1, -1, -1);
+	data->menu.dcb(win, data, cb->nmemb, data->menu.ptrs[0], data->menu.ptrs[1], -1, COLOR_PAIR(1));
+
+	write_data(list_of_lists, list_of_lists->size);
+	return 1;
+}
+int move_lUp(WINDOW* win, struct Data* data, void* _list) {
+	if (!_list) return 1;
+	struct List* list = (struct List*)_list;
+	struct Lists* list_of_lists = (struct Lists*)((void**)data->data)[1];
+	int* size = (int*)((void**)data->data)[2];
+	struct Callback* cb = (struct Callback*)((void**)data->data)[3];
+	int y = getmaxy(win);
+
+	if (!data->menu.ptrs[1]) return 1;
+	char* temp = data->ls[data->menu.ptrs[1]];
+	data->ls[data->menu.ptrs[1]] = data->ls[data->menu.ptrs[1]-1];
+	data->ls[data->menu.ptrs[1]-1] = temp;
+	int (*ftemp)(WINDOW*, struct Data*, void*) = cb->func[data->menu.ptrs[1]];
+	cb->func[data->menu.ptrs[1]] = cb->func[data->menu.ptrs[1]-1];
+	cb->func[data->menu.ptrs[1]-1] = ftemp;
+	/*void* atemp = cb->args[data->menu.ptrs[1]];
+	cb->args[data->menu.ptrs[1]] = cb->args[data->menu.ptrs[1]-1];
+	cb->args[data->menu.ptrs[1]-1] = atemp;*/
+
+	struct List* Ltemp = list_get(list_of_lists, data->menu.ptrs[1]);
+	char* lid = strdup(Ltemp->id);
+	int lsize = Ltemp->size;
+	struct Task* lhead = Ltemp->head;
+	struct List* Ltemp1 = list_get(list_of_lists, data->menu.ptrs[1]-1);
+	list_set(list_of_lists, data->menu.ptrs[1], Ltemp1->id, Ltemp1->size, Ltemp1->head);
+	list_set(list_of_lists, data->menu.ptrs[1]-1, lid, lsize, lhead);
+
+	if (!data->menu.ptrs[0]) {
+		mscroll(win, data, cb->nmemb,data->menu.ptrs, 0);
+	} else {data->menu.ptrs[0]--;data->menu.ptrs[1]--;}
+
+	data->menu.dcb(win, data, cb->nmemb, data->menu.ptrs[0]+1, data->menu.ptrs[1]+1, -1, -1);
+	data->menu.dcb(win, data, cb->nmemb, data->menu.ptrs[0], data->menu.ptrs[1], -1, COLOR_PAIR(1));
+
+	write_data(list_of_lists, list_of_lists->size);
 	return 1;
 }
 
@@ -438,9 +585,45 @@ int move_down(WINDOW* win, struct Data* data, void* _task) {
 	if (!_task) return 1;
 	struct Task* task = (struct Task*)_task;
 	struct List* list = (struct List*)((void**)data->data)[1];
-	struct List* list_of_lists = (struct List*)((void**)data->data)[2];
+	struct Lists* list_of_lists = (struct Lists*)((void**)data->data)[2];
 	int* size = (int*)((void**)data->data)[3];
 	struct Callback* cb = (struct Callback*)((void**)data->data)[4];
+	int y = getmaxy(win);
+
+	if (data->menu.ptrs[1] == cb->nmemb-1) return 1;
+
+	char* temp = data->ls[data->menu.ptrs[1]];
+	data->ls[data->menu.ptrs[1]] = data->ls[data->menu.ptrs[1]+1];
+	data->ls[data->menu.ptrs[1]+1] = temp;
+	int (*ftemp)(WINDOW*, struct Data*, void*) = cb->func[data->menu.ptrs[1]];
+	cb->func[data->menu.ptrs[1]] = cb->func[data->menu.ptrs[1]+1];
+	cb->func[data->menu.ptrs[1]+1] = ftemp;
+	/*void* atemp = cb->args[data->menu.ptrs[1]];
+	cb->args[data->menu.ptrs[1]] = cb->args[data->menu.ptrs[1]+1];
+	cb->args[data->menu.ptrs[1]+1] = atemp;*/
+	
+	struct Task* Ttemp = task_get(list, data->menu.ptrs[1]);
+	char* tid = strdup(Ttemp->id); int tstatus = Ttemp->status;
+	struct Task* Ttemp1 = task_get(list, data->menu.ptrs[1]+1);
+	task_set(list, data->menu.ptrs[1], Ttemp1->id, Ttemp1->status);
+	task_set(list, data->menu.ptrs[1]+1, tid, tstatus);
+
+	if (data->menu.ptrs[0] == y-1) {
+		mscroll(win, data, cb->nmemb,data->menu.ptrs, 1);
+	} else {data->menu.ptrs[0]++;data->menu.ptrs[1]++;}
+
+	data->menu.dcb(win, data, cb->nmemb, data->menu.ptrs[0]-1, data->menu.ptrs[1]-1, -1, -1);
+	data->menu.dcb(win, data, cb->nmemb, data->menu.ptrs[0], data->menu.ptrs[1], -1, COLOR_PAIR(1));
+
+	write_data(list_of_lists, list_of_lists->size);
+	return 1;
+}
+int move_lDown(WINDOW* win, struct Data* data, void* _list) {
+	if (!_list) return 1;
+	struct List* list = (struct List*)_list;
+	struct Lists* list_of_lists = (struct Lists*)((void**)data->data)[1];
+	int* size = (int*)((void**)data->data)[2];
+	struct Callback* cb = (struct Callback*)((void**)data->data)[3];
 	int y = getmaxy(win);
 
 	if (data->menu.ptrs[1] == cb->nmemb-1) return 1;
@@ -450,14 +633,57 @@ int move_down(WINDOW* win, struct Data* data, void* _task) {
 	int (*ftemp)(WINDOW*, struct Data*, void*) = cb->func[data->menu.ptrs[1]];
 	cb->func[data->menu.ptrs[1]] = cb->func[data->menu.ptrs[1]+1];
 	cb->func[data->menu.ptrs[1]+1] = ftemp;
-	void* atemp = cb->args[data->menu.ptrs[1]];
+	/*void* atemp = cb->args[data->menu.ptrs[1]];
 	cb->args[data->menu.ptrs[1]] = cb->args[data->menu.ptrs[1]+1];
-	cb->args[data->menu.ptrs[1]+1] = atemp;
+	cb->args[data->menu.ptrs[1]+1] = atemp;*/
+	
+	struct List* Ltemp = list_get(list_of_lists, data->menu.ptrs[1]);
+	char* lid = strdup(Ltemp->id);
+	int lsize = Ltemp->size;
+	struct Task* lhead = Ltemp->head;
+	struct List* Ltemp1 = list_get(list_of_lists, data->menu.ptrs[1]+1);
+	list_set(list_of_lists, data->menu.ptrs[1], Ltemp1->id, Ltemp1->size, Ltemp1->head);
+	list_set(list_of_lists, data->menu.ptrs[1]+1, lid, lsize, lhead);
 
-	if (data->menu.ptrs[0] == data->menu.mtop) {
+	if (data->menu.ptrs[0] == y-1) {
 		mscroll(win, data, cb->nmemb,data->menu.ptrs, 1);
 	} else {data->menu.ptrs[0]++;data->menu.ptrs[1]++;}
 
-	write_data(list_of_lists, *size);
+	data->menu.dcb(win, data, cb->nmemb, data->menu.ptrs[0]-1, data->menu.ptrs[1]-1, -1, -1);
+	data->menu.dcb(win, data, cb->nmemb, data->menu.ptrs[0], data->menu.ptrs[1], -1, COLOR_PAIR(1));
+
+	write_data(list_of_lists, list_of_lists->size);
 	return 1;
+}
+
+void* _serv_sync() {return NULL;}
+
+void _server(void* args) {
+	struct sockaddr_in addr;
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = INADDR_ANY;
+	addr.sin_port = htons(4445);
+	socklen_t size = sizeof(addr);
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	int opt = 1;
+	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR|SO_REUSEPORT, &opt, sizeof(opt));
+	if (bind(sock, (struct sockaddr*)&addr, size) == -1) {
+		// An error has ocurred and syncronization with this device is unavailable.
+	}
+	listen(sock, 1);
+	for (;;) {
+		int conn = accept(sock, (struct sockaddr*)&addr, &size);
+		pthread_t t;
+		pthread_create(&t, NULL, _serv_sync, NULL);
+		pthread_join(t, NULL);
+	}
+}
+
+pid_t server_start() {
+	pid_t pid = fork();
+	if (!pid) {
+		_server(NULL);
+		exit(1);
+	}
+	return pid;
 }

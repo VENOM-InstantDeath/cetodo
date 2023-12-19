@@ -16,6 +16,7 @@ struct Lists {
 	struct List* head;
 	int size;
 };
+struct Lists lists_init();
 struct List list_init();
 void task_add(struct List* head, char* id, int status);
 void list_add(struct Lists* head, char* id);
@@ -37,6 +38,9 @@ void list_rpop(struct Lists* head);
 
 struct Task* task_get(struct List* head, int index);
 struct List* list_get(struct Lists* head, int index);
+
+void task_set(struct List* head, int index, char* id, int value);
+void list_set(struct Lists* head, int index, char* id, int size, struct Task* thead);
 
 int task_search(struct List* head, char* id);
 int list_search(struct Lists* head, char* id);
