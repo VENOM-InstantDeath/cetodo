@@ -10,6 +10,7 @@
 #include <ncurses.h>
 #include <sys/stat.h>
 #include <pthread.h>
+#include <signal.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -213,6 +214,33 @@ int load_data(struct Lists* lists) {
 	}
 	free(datadir); free(datafile);
 	return size;
+}
+
+int load_trusted(char ***ls) {
+	struct vector vec;vector_init(&vec);
+	struct string path; string_init(&path);
+	string_add(&path, getenv("HOME"));
+	string_add(&path, "/.local/share/etodo/trusted");
+	FILE* ftrust = fopen(path.str, "r");
+	if (!ftrust) {
+		fclose(ftrust);
+		ftrust = fopen(path.str, "w");
+		fwrite("[]", 1, 2, ftrust);
+		fclose(ftrust);
+		vec.str=NULL;
+	} else {
+		struct stat st;
+		stat(path.str, &st);
+		char* buff = calloc(st.st_size+1, 1);
+		fread(buff, 1, st.st_size, ftrust);
+		json_object *json = json_tokener_parse(buff);
+		json_object_object_foreach(json, k, v) {
+			vector_add(&vec, k);
+		}
+		fclose(ftrust);
+	}
+	*ls = vec.str;
+	return vec.size;
 }
 
 void write_data(struct Lists* lists, int size) {
@@ -656,7 +684,28 @@ int move_lDown(WINDOW* win, struct Data* data, void* _list) {
 	return 1;
 }
 
-void* _serv_sync() {return NULL;}
+void* _serv_sync(void* args) {
+	int conn = *((int*)args);
+	struct string path; string_init(&path);
+	string_add(&path, getenv("HOME"));
+	string_add(&path, "/.local/share/etodo/data.json");
+
+	FILE* ftasks = fopen(path.str, "r");
+	struct stat st;
+	stat(path.str, &st);
+	int fsize = st.st_size;
+	char* taskdata = calloc(st.st_size, 1);
+	fread(taskdata, 1, fsize, ftasks);
+	fclose(ftasks);
+
+	while (fsize) {
+		int dw = write(conn, taskdata, fsize);
+		taskdata += dw;
+		fsize -= dw;
+	}
+	close(conn);
+	return 0;
+}
 
 void _server(void* args) {
 	struct sockaddr_in addr;
@@ -674,7 +723,7 @@ void _server(void* args) {
 	for (;;) {
 		int conn = accept(sock, (struct sockaddr*)&addr, &size);
 		pthread_t t;
-		pthread_create(&t, NULL, _serv_sync, NULL);
+		pthread_create(&t, NULL, _serv_sync, (void*)&conn);
 		pthread_join(t, NULL);
 	}
 }
@@ -686,4 +735,30 @@ pid_t server_start() {
 		exit(1);
 	}
 	return pid;
+}
+
+void server_stop(pid_t server) {
+	kill(server, SIGTERM);
+}
+
+int _cli_sync(WINDOW* win, struct Data* data, void* arg) {
+	return 1;
+}
+
+int client_sync(WINDOW* win, struct Data* data, void* _list) {
+	int y, x; getmaxyx(stdscr, y, x);
+	WINDOW* win1 = newwin(6, 25, y/2-3, x/2-12);
+	wbkgd(win1, COLOR_PAIR(3));
+	keypad(win1, 1);
+	wrefresh(win1);
+	box(win1, ACS_VLINE, ACS_HLINE);
+	mvwaddstr(win1, 0, 1, "Sync");
+	char** ls; int nmemb = load_trusted(&ls);
+	int (**func)(WINDOW*,struct Data*, void*);
+	void** args;
+	struct Callback _cb = {func, args, nmemb};
+	struct Data _data = {0, 0, data->wins, data->wins_size, 0};
+	struct Binding _bind = {0, 0, 0};
+	int ptrs[2] = {0,0};
+	return 1;
 }
